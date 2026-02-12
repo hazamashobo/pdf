@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF電子書籍リーダー</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Lora:wght@400;500&display=swap');
+
+        * {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Lora', serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1a1f2e 100%);
+            color: #f5f5f5;
+        }
+
+        .header {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        .control-button {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            padding: 0.625rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(30, 41, 59, 0.6);
+            color: #e2e8f0;
+        }
+
+        .control-button:hover {
+            background: rgba(51, 65, 85, 0.8);
+            border-color: rgba(148, 163, 184, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .control-button:active {
+            transform: translateY(0);
+        }
+
+        .control-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .canvas-container {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 2rem;
+            overflow-auto;
+            height: calc(100vh - 180px);
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.5), rgba(30, 27, 36, 0.7));
+        }
+
+        .page-canvas {
+            background: white;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            border-radius: 4px;
+            cursor: grab;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .page-canvas:active {
+            cursor: grabbing;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8);
+        }
+
+        .single-page {
+            max-width: 100% !important;
+        }
+
+        .zoom-display {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(8px);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            color: #cbd5e1;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .page-info {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(8px);
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            color: #cbd5e1;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .input-field {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+            padding: 0.625rem 0.875rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            width: 70px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: rgba(148, 163, 184, 0.5);
+            background: rgba(51, 65, 85, 0.7);
+        }
+
+        .footer {
+            background: rgba(15, 23, 42, 0.95);
+            border-top: 1px solid rgba(148, 163, 184, 0.1);
+            padding: 1rem;
+        }
+
+        .spinner {
+            border: 3px solid rgba(148, 163, 184, 0.2);
+            border-top: 3px solid #94a3b8;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* モバイル対応 */
+        @media (max-width: 768px) {
+            .title {
+                font-size: 1.25rem;
+            }
+
+            .canvas-container {
+                flex-direction: column;
+                gap: 0.5rem;
+                padding: 1rem;
+                height: calc(100vh - 200px);
+            }
+
+            .control-button {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.8rem;
+            }
+
+            .page-canvas {
+                max-width: 100% !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .title {
+                font-size: 1rem;
+            }
+
+            .header {
+                padding: 0.75rem;
+            }
+
+            .footer {
+                padding: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+    <!-- ヘッダー -->
+    <div class="header p-4 sm:p-6">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <h1 class="title">PDF Reader</h1>
+            <div class="flex items-center gap-2 text-sm text-slate-400">
+                <span>📖</span>
+                <span>見開き表示で快適に読む</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- メインコンテンツ -->
+    <div class="canvas-container" id="canvasContainer">
+        <div class="flex flex-col items-center justify-center w-full h-full">
+            <div class="spinner mb-4"></div>
+            <p class="text-slate-400">PDFを読み込み中...</p>
+        </div>
+    </div>
+
+    <!-- フッター -->
+    <div class="footer">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <!-- 左側: ページ移動 -->
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start">
+                <button class="control-button" id="prevBtn" title="前のページ">
+                    ← 前へ
+                </button>
+                <input type="number" id="pageInput" class="input-field" min="1" title="ページ番号を入力">
+                <span class="page-info">/ <span id="totalPages">-</span></span>
+                <button class="control-button" id="nextBtn" title="次のページ">
+                    次へ →
+                </button>
+            </div>
+
+            <!-- 右側: ズーム -->
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-end flex-wrap">
+                <button class="control-button" id="zoomOutBtn" title="縮小">−</button>
+                <div class="zoom-display" id="zoomDisplay">100%</div>
+                <button class="control-button" id="zoomInBtn" title="拡大">+</button>
+                <button class="control-button" id="fitBtn" title="ページに合わせる">Fit</button>
+                <button class="control-button" id="toggleViewBtn" title="ビュー切り替え">Single</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // PDF.jsの初期化
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let pdfDoc = null;
+        let currentPage = 1;
+        let zoom = 1;
+        let isDualPage = true;
+        let originalScale = 1;
+
+        const canvasContainer = document.getElementById('canvasContainer');
+        const pageInput = document.getElementById('pageInput');
+        const totalPagesSpan = document.getElementById('totalPages');
+        const zoomDisplay = document.getElementById('zoomDisplay');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const zoomInBtn = document.getElementById('zoomInBtn');
+        const zoomOutBtn = document.getElementById('zoomOutBtn');
+        const fitBtn = document.getElementById('fitBtn');
+        const toggleViewBtn = document.getElementById('toggleViewBtn');
+
+        // サンプルPDFをロード
+        async function loadPDF() {
+            try {
+                // ここにPDFのURLを指定してください
+                const url = 'https://www.mozilla.org/media/documents/aboutff_sample_en-US.pdf';
+                pdfDoc = await pdfjsLib.getDocument(url).promise;
+                totalPagesSpan.textContent = pdfDoc.numPages;
+                pageInput.max = pdfDoc.numPages;
+                renderPages();
+            } catch (error) {
+                canvasContainer.innerHTML = '<div class="text-red-400">PDFの読み込みに失敗しました</div>';
+                console.error('PDF load error:', error);
+            }
+        }
+
+        async function renderPages() {
+            canvasContainer.innerHTML = '';
+            const pages = isDualPage ? [currentPage, currentPage + 1] : [currentPage];
+            const validPages = pages.filter(p => p >= 1 && p <= pdfDoc.numPages);
+
+            if (validPages.length === 0) return;
+
+            for (const pageNum of validPages) {
+                try {
+                    const page = await pdfDoc.getPage(pageNum);
+                    const viewport = page.getViewport({ scale: zoom });
+                    
+                    const canvas = document.createElement('canvas');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    canvas.className = 'page-canvas fade-in ' + (validPages.length === 1 ? 'single-page' : '');
+                    
+                    const context = canvas.getContext('2d');
+                    await page.render({
+                        canvasContext: context,
+                        viewport: viewport
+                    }).promise;
+
+                    canvasContainer.appendChild(canvas);
+                } catch (error) {
+                    console.error(`Error rendering page ${pageNum}:`, error);
+                }
+            }
+
+            updateUI();
+        }
+
+        function updateUI() {
+            pageInput.value = currentPage;
+            prevBtn.disabled = currentPage <= 1;
+            nextBtn.disabled = currentPage >= pdfDoc.numPages;
+            zoomDisplay.textContent = Math.round(zoom * 100) + '%';
+        }
+
+        function goToPage(pageNum) {
+            const num = parseInt(pageNum);
+            if (num >= 1 && num <= pdfDoc.numPages) {
+                currentPage = num;
+                renderPages();
+            }
+        }
+
+        function changePage(direction) {
+            const step = isDualPage ? 2 : 1;
+            const newPage = currentPage + direction * step;
+            if (newPage >= 1 && newPage <= pdfDoc.numPages) {
+                currentPage = newPage;
+                renderPages();
+            }
+        }
+
+        function changeZoom(factor) {
+            zoom = Math.max(0.5, Math.min(zoom * factor, 3));
+            renderPages();
+        }
+
+        function fitToPage() {
+            zoom = 1;
+            renderPages();
+        }
+
+        function toggleView() {
+            isDualPage = !isDualPage;
+            toggleViewBtn.textContent = isDualPage ? 'Double' : 'Single';
+            currentPage = Math.max(1, Math.floor((currentPage - 1) / 2) * 2 + 1);
+            renderPages();
+        }
+
+        // イベントリスナー
+        prevBtn.addEventListener('click', () => changePage(-1));
+        nextBtn.addEventListener('click', () => changePage(1));
+        zoomInBtn.addEventListener('click', () => changeZoom(1.2));
+        zoomOutBtn.addEventListener('click', () => changeZoom(1 / 1.2));
+        fitBtn.addEventListener('click', fitToPage);
+        toggleViewBtn.addEventListener('click', toggleView);
+        
+        pageInput.addEventListener('change', (e) => goToPage(e.target.value));
+        pageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') goToPage(e.target.value);
+        });
+
+        // キーボードショートカット
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') changePage(-1);
+            if (e.key === 'ArrowRight') changePage(1);
+            if (e.key === '+' || e.key === '=') changeZoom(1.1);
+            if (e.key === '-') changeZoom(1 / 1.1);
+        });
+
+        // 初期化
+        loadPDF();
+    </script>
+</body>
+</html>
